@@ -1,0 +1,171 @@
+PROBLEM STATEMENT: Retrieve the Sequence of Connecting Flights for a Customer's Journey in SQL.
+/*
+Database of Airlines
+Table1: Customer Id, Ticket ID, Origin, Destination, Start time and end Time
+Table2: Flight Number, Date, Origin, Destination, Start time and end time of the flight
+
+Assumption: There can be only one flight taking off from an airport at a given time
+
+Desired Output – for given cust_id, ticket_id, need sequence of all flight_no used for the trip (all connecting flights)
+
+Table1 : cust_id, ticket_id, first_cust_port, last_cust_port, cust_start, cust_end
+Table2 : flight_no, date, orig_port, dest_port, flight_start, flight_end
+*/
+
+data cust_data;
+   input cust_id $ ticket_id first_cust_port $ last_cust_port $ cust_start cust_end;
+   datalines;
+    A123 9342312 Delhi Mumbai 815 1730
+    A456 6542312 Delhi Mumbai 830 1015
+    A789 7542312 Delhi Mumbai 845 1330; 
+
+data flight_data;
+   input flight_no $ date $ orig_port $ dest_port $ flight_start flight_end;
+   datalines;
+    B99 04042014 Delhi Mumbai 830 1015
+    B89 04042014 Delhi Jaipur 845 1045
+    B69 04042014 Jaipur Mumbai 1130 1330
+    B79 04042014 Delhi Agra 815 1130
+    B59 04042014 Agra Surat 1230 1430
+    B49 04042014 Surat Pune 1445 1530
+    B39 04042014 Pune Mumbai 1615 1730; 
+
+
+SOLUTION: 
+--STEP 1 : Create the two tables namely cust_id and flight_data.
+      -- cust_data
+         CREATE TABLE cust_data (
+              cust_id VARCHAR(10),
+              ticket_id VARCHAR(10),
+              first_cust_port VARCHAR(50),
+              last_cust_port VARCHAR(50),
+              cust_start TIME,
+              cust_end TIME);
+
+        INSERT INTO cust_data (cust_id, ticket_id, first_cust_port, last_cust_port, cust_start, cust_end) 
+        VALUES
+        ('A123', '9342312', 'Delhi', 'Mumbai', '08:15', '17:30'),
+        ('A456', '6542312', 'Delhi', 'Mumbai', '08:30', '10:15'),
+        ('A789', '7542312', 'Delhi', 'Mumbai', '08:45', '13:30');
+
+
+      -- flight_data
+        CREATE TABLE flight_data (
+            flight_no VARCHAR(10),
+            date VARCHAR(10),
+            orig_port VARCHAR(50),
+            dest_port VARCHAR(50),
+            flight_start TIME,
+            flight_end TIME);
+        
+        INSERT INTO flight_data(flight_no, date, orig_port, dest_port, flight_start, flight_end) 
+        VALUES
+        ('B99', '04042014', 'Delhi', 'Mumbai', '08:30', '10:15'),
+        ('B89', '04042014', 'Delhi', 'Jaipur', '08:45', '10:45'),
+        ('B69', '04042014', 'Jaipur', 'Mumbai', '11:30', '13:30'),
+        ('B79', '04042014', 'Delhi', 'Agra', '08:15', '11:30'),
+        ('B59', '04042014', 'Agra', 'Surat', '12:30', '14:30'),
+        ('B49', '04042014', 'Surat', 'Pune', '14:45', '15:30'),
+        ('B39', '04042014', 'Pune', 'Mumbai', '16:15', '17:30');
+
+
+--STEP 2 : Here is the stored procedure to retrieve the sequence of connecting flights for a customer:
+      -- Creating a stored procedure 'FlightNumber' that takes the customer ID as input from the user (@cust_id)
+        CREATE PROCEDURE FlightNumber @CUST_ID NVARCHAR(20)
+        AS
+        BEGIN
+            -- Create a temporary table
+            CREATE TABLE #temp_view (
+                flight_no VARCHAR(20),
+                date VARCHAR(10),
+                orig_port VARCHAR(20),
+                dest_port VARCHAR(20),
+                flight_start VARCHAR(20),
+                flight_end VARCHAR(20));
+        	
+            -- Declare variables to store the ports and times for the customer's trip
+            DECLARE @INIT_PORT VARCHAR(20);     -- Customer's origin port
+            DECLARE @FINAL_PORT VARCHAR(20);    -- Customer's destination port
+            DECLARE @INIT_TIME VARCHAR(20);     -- Customer's trip start time
+            DECLARE @FINAL_TIME VARCHAR(20);    -- Customer's trip end time
+            DECLARE @PORT VARCHAR(20);               
+            DECLARE @TIME VARCHAR(20);               
+
+            -- Assign values to the variables based on the customer ID provided by the user
+            SELECT @INIT_PORT = first_cust_port,		
+                   @FINAL_PORT = last_cust_port,
+                   @INIT_TIME = cust_start,
+                   @FINAL_TIME = cust_end
+            FROM CUST_DATA
+            WHERE CUST_ID = @CUST_ID;
+        
+            -- Select the initial row and insert into temp table
+            INSERT INTO #temp_view
+            SELECT * FROM FLIGHT_DATA
+            WHERE dest_port = @FINAL_PORT AND flight_end = @FINAL_TIME;
+        
+            -- Select rows till orig_port = @INIT_PORT
+            SELECT TOP 1 @PORT = orig_port 
+            FROM #temp_view 
+            ORDER BY flight_end ASC;
+        
+            WHILE @PORT <> @INIT_PORT
+            BEGIn 
+                -- Insert the next row based on the current @PORT
+                INSERT INTO #temp_view
+                SELECT TOP 1 * 
+                FROM FLIGHT_DATA
+                WHERE dest_port = @PORT
+                ORDER BY flight_end ASC;
+                
+           		-- Select rows till orig_port = @INIT_PORT
+                SELECT TOP 1 @PORT = orig_port
+                FROM #temp_view
+                ORDER BY flight_end ASC;
+        
+                -- Check if @PORT equals @INIT_PORT to break the loop
+                IF @PORT = @INIT_PORT
+                BREAK;
+            END;
+             
+            -- Display result/output
+            SELECT * 
+            FROM #temp_view
+            ORDER BY flight_end ASC;
+        END;
+
+
+-- Step 3: Call the stored procedure for a specific customer ID
+EXEC FlightNumber @CUST_ID = 'A789';
+
+
+EXPLANATION:
+To address the task of dynamically retrieving the sequence of connecting flights for a customer's trip, we've designed a SQL procedure. Here's a breakdown of how it works:
+
+1. **Tables Creation and Data Insertion**:
+   - We create two tables: `cust_data` and `flight_data`, and populate them with sample data.
+
+2. **Stored Procedure Overview**:
+   - The procedure, named `FlightNumber`, focuses on fetching the sequence of flights for a specified customer id.
+
+3. **Temporary Table Usage**:
+   - We utilize `#temp_view`, a temporary table, to store flight details in sequence.
+
+4. **Procedure Execution**:
+   - The procedure begins by identifying the customer's id (`@cust_id = 'A123'`) and their journey details.
+   - For example, the journey might involve traveling from Delhi to Mumbai via stops like Delhi -> Agra, Agra -> Surat, Surat -> Pune, and Pune -> Mumbai.
+
+5. **Fetching Flight Sequence**:
+   - Starting from the final destination (`@final_port`) and time (`@final_time`), which matches the destination and landing time of the last flight of the journey.
+   - It then tracks backward until reaching the initial departure port (`@init_port`) by following the `orig_port` of each flight in reverse order.
+
+6. **Populating and Displaying Results**:
+   - As each flight segment is traced backward, its details are added to `#temp_view`.
+   - Finally, the contents of `#temp_view` are displayed as the output, showing the complete sequence of flights for the customer's journey.
+
+This procedure provides a structured approach to dynamically retrieving and displaying the sequence of flights for any given customer trip, ensuring clarity and completeness in understanding the journey's flight connections.
+
+
+
+
+
